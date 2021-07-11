@@ -1,0 +1,109 @@
+#include <NTPClient.h>
+#include <ArduinoJson.h>
+#include <Firebase.h>
+#include <FirebaseArduino.h>
+#include <FirebaseCloudMessaging.h>
+#include <FirebaseError.h>
+#include <FirebaseHttpClient.h>
+#include <FirebaseObject.h>
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#define FIREBASE_HOST "finalproject-fd9da-default-rtdb.firebaseio.com"      
+#define FIREBASE_AUTH "1X425bGk00PqTTUOVQ4v4BhFinBhJr1xH6f8zjU1"            
+#define WIFI_SSID "samay"                                  
+#define WIFI_PASSWORD "samay502"
+#define  SENSOR_PIN A0
+String formattedDate;
+String dayStamp;
+String DBnm; 
+int count = 0;
+const int sampleWindow = 500;
+unsigned int sample;
+int db;
+void setup() 
+{
+Serial.begin(115200);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  pinMode (SENSOR_PIN, INPUT);
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+}
+void loop() 
+{
+   const long utcOffsetInSeconds = 19800;
+   WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+  timeClient.update();
+    String hr, mn, sc;
+    if (timeClient.getHours() < 10) {
+      hr = "0" + String(timeClient.getHours());
+    }
+    else {
+      hr = String(timeClient.getHours());
+    }
+    
+    if (timeClient.getMinutes() < 10) {
+      mn = "0" + String(timeClient.getMinutes());
+    }
+    else {
+      mn = String(timeClient.getMinutes());
+    }
+  
+    if (timeClient.getSeconds() < 10) {
+      sc = "0" + String(timeClient.getSeconds());
+    }
+    else {
+      sc = String(timeClient.getSeconds());
+    }
+    String TimeNow = hr + ":" + mn + ":" + sc;
+     Serial.print(TimeNow);
+      String DBaddT=DBnm + "/" + TimeNow + "/";
+     formattedDate = timeClient.getFormattedDate();
+  Serial.println(formattedDate);
+  int splitT = formattedDate.indexOf("T");
+  dayStamp = formattedDate.substring(0, splitT);
+  String Date=String(dayStamp);
+    
+unsigned long startMillis = millis();
+float peakToPeak = 0;
+ unsigned int signalMax = 0;
+  unsigned int signalMin = 1024;
+
+  while(millis() - startMillis < sampleWindow)
+  {
+    sample = analogRead(SENSOR_PIN);
+    if (sample < 1024)
+    {
+      if (sample > signalMax)
+      {
+        signalMax = sample;
+      }
+      else if (sample < signalMin)
+      {
+        signalMin = sample; 
+      }
+    }
+  }
+   peakToPeak = signalMax - signalMin;  
+  db = map(peakToPeak, 20, 900, 49.5, 90);
+  String Loudness=String(peakToPeak)+String("db");
+  Firebase.setString("SENSOR/Date",Date);
+  Firebase.setString("SENSOR/Time",DBaddT);
+   Firebase.setString("SENSOR/Reading",Loudness);
+  Serial.println(WiFi.localIP());
+  if (db <= 50)
+  {
+   Serial.println("Level: Low");
+   Firebase.setString("SENSOR/Level","Low");
+  }
+  else if (db > 50 && db < 75)
+  {
+    Serial.println("Level: Moderate");
+      Firebase.setString("SENSOR/Level","Moderate");
+  }
+  else if (db >= 75)
+  {
+   Serial.println("Level: High");
+   Firebase.setString("SENSOR/Level","High");
+   
+  }
+}
